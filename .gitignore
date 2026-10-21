@@ -1,0 +1,15 @@
+# secrets
+
+.env
+.env.*
+
+
+# steam data
+
+data/
+
+
+# python
+_pycache/
+*.pyc
+.venv/
