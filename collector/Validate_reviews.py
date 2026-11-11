@@ -3,8 +3,8 @@ from datetime import datetime,timedelta, timezone
 import requests
 
 #-----Changinng this per game----
-appid = 1291860
-release_date = datetime(2023, 3, 13, tzinfo=timezone.utc)
+appid = 2206240
+release_date = datetime(2024, 4, 30, tzinfo=timezone.utc)
 #--------------------------------
 
 url = "https://api.steampowered.com/IUserReviewsService/GetAppReviews/v1/"
@@ -20,7 +20,7 @@ def fetch_page(extra=None):
       'filter': 1,
       'review_type':0,
       'purchase_type': 0,
-      'languages': ['all'],
+      'languages': ['english'],
       'filter_offtopic_activity': False,
       'num_per_page': 100,
 }
@@ -33,20 +33,21 @@ def fetch_page(extra=None):
     except requests.exceptions.JSONDecodeError:
       raise SystemExit("Steam did not return valid JSON: " + repr(response.text[:120]))  # Print the first 120 characters of the response
  
-def fetch_all_reviews():
-    result = fetch_page()  
+def fetch_all_reviews(extra=None):
+    result = fetch_page(extra)  
     reviews = result.get("reviews", [])
     total = result.get("total_matching", 0)
      
     while len(reviews) < total:
-        result = fetch_page({'cursor': result.get("cursor")})
+        result = fetch_page({**(extra or {}), 'cursor': result.get("cursor")})
         new_reviews = result.get("reviews", [])
         if not new_reviews:
             raise RuntimeError("Steam stopped returning reviews before reaching the total_matching.")
         reviews.extend(new_reviews)
+        print(f"Fetched {len(reviews)} /{total}", end="\r")
     return reviews, total
 def steam_count(date_start, date_end):
-    result= fetch_page({'date_range_start': date_start, 'date_range_end': date_end})
+    result= fetch_page({'date_range_start': date_start, 'date_range_end': date_end, 'num_per_page': 1})
     return result.get("total_matching", 0)
 
 
