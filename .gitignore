@@ -6,7 +6,8 @@
 
 # steam data
 
-data/
+data/*
+!data/sample_order.csv
 
 
 # python
