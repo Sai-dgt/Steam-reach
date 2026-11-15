@@ -107,7 +107,16 @@ def get_review_count(appid,start,end, variant):
     
     return data.get("response", {}).get("total_matching")
 
+def collect_reviews(appid, release):
+    first_year_end  = int((release + timedelta(days=365)).timestamp())
+    before_year_end = int((release - timedelta(days=2)).timestamp())
 
+    return{
+        "before_release":get_review_count (appid, 1, before_year_end, "before_release"),
+        "first_year":get_review_count (appid,int(release.timestamp()),first_year_end,"first_year"),
+        "lifetime":get_review_count ( appid, None,None, "lifetime"),
+    }
+     
 
 project_root = Path(__file__).resolve().parent.parent
 sample_file = project_root / 'data' / 'sample_order.csv'
@@ -163,44 +172,10 @@ with open(sample_file, 'r', newline='', encoding='utf-8') as f:
         #Display the results
         game=data.get(str(appid), {})
 
-        print("Steam App ID:", appid)
-        print("Available:", game.get('success', False))
-        print("Eligibility:", eligibility(game))
+        status = eligibility(game)
+        print(position, appid, status)
 
-#Test with a previously validated game
-test_release=datetime(2023,3,13,tzinfo=timezone.utc)
-
-start = int(test_release.timestamp())
-end = int((test_release + timedelta(days=365)).timestamp())
-count=get_review_count(1291860,start,end, "first_year")
-
-print("Rough justice: '84 first year reviews:",count)
-
-#New reviews before release
-before_end=int(
-    (test_release - timedelta(days=2)).timestamp()
-)
-
-before_count = get_review_count(
-    1291860,
-    1,
-    before_end,
-    "before_release"
-)
-
-print("Before_release reviews:", before_count)
-
-#Pause before API requests
-time.sleep(1)
-
-#New reviews across the game's entire lifetime
-
-lifetime_count= get_review_count(
-1291860,
-None,
-None,
-"lifetime"
-
-)
-
-print("lifetime reviews:",lifetime_count)
+        if status == "eligible":
+            release = parse_date(game["data"]["release_date"]["date"])
+            counts = collect_reviews(appid, release)
+            print("    reviews:", counts)
