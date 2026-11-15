@@ -14,3 +14,6 @@ data/*
 _pycache/
 *.pyc
 .venv/
+
+#personal file
+guides/
