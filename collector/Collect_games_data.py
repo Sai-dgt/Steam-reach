@@ -7,7 +7,7 @@ import time
 
 Window_start = datetime(2020, 1, 1, tzinfo=timezone.utc)
 Window_end = datetime(2025, 12, 31, tzinfo=timezone.utc)
-
+APPDETAILS_URL="https://store.steampowered.com/api/appdetails"
 date_format = [
 
  "%b %d, %Y",
@@ -58,6 +58,32 @@ def eligibility(game):
         return "6_no_price"  # Exclude if the game has no price information 
     return "eligible"
 
+def get_json(url, params, max_attempts=5):
+    """Get a steam URL and return its JSON, retrying on rate limits and network errors"""
+
+    wait = 30
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            response = requests.get(url, params=params, timeout=30)
+            if response.status_code == 429 or response.status_code >= 500:
+                raise requests.HTTPError (f"HTTP {response.status_code}")
+            response.raise_for_status()
+            data = response.json()
+            if data:
+                return data
+            print(f"   empty response (attempt {attempt})")
+        except (requests.RequestException, ValueError) as e:
+            print(f" request failed (attempt {attempt}): {e}")
+
+        if attempt < max_attempts:
+            print(f"   waiting {wait}s before retrying...")
+            time.sleep(wait)
+            wait *=2         #30s,60s,120s,240s
+
+    raise RuntimeError(f"Gave up after {max_attempts} attempts")
+
+
 def get_review_count(appid,start,end, variant):
     url = "https://api.steampowered.com/IUserReviewsService/GetAppReviews/v1/"
     query = {
@@ -93,11 +119,7 @@ def get_review_count(appid,start,end, variant):
             data=json.load(f)
 
     else:
-        response= requests.get(url, params=params, timeout=30)
-        response.raise_for_status()
-        data=response.json()
-        if not data:
-            raise SystemExit("Empty review response (probably rate limited)")
+        data=get_json(url,params)
         temp_file = reviews_dir / f"{appid}_{variant}.json.tmp"
         with open (temp_file,"w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
@@ -143,6 +165,8 @@ with open(sample_file, 'r', newline='', encoding='utf-8') as f, \
         writer.writeheader()
     skipped=0
     processed=0
+    failed=0
+
     for position, row in enumerate(reader, start=1):
         if position >5:
             break
@@ -153,63 +177,53 @@ with open(sample_file, 'r', newline='', encoding='utf-8') as f, \
             skipped += 1
             continue
 #prepare the file path for the game details
-        output_file = details_dir / f"{appid}.json"
+        
+        try:
+            output_file = details_dir / f"{appid}.json"
 
 #Reuse existing data or download new data if the file doesn't exist
 
-        if output_file.exists():
-            print("using saved data:", output_file)
-            with open(output_file, 'r', encoding='utf-8') as jf:
-                data = json.load(jf)
-        else:
-            print("downloading data for appid:", appid)
+            if output_file.exists():
+                print("using saved data:", output_file)
+                with open(output_file, 'r', encoding='utf-8') as jf:
+                    data = json.load(jf)
+            else:
 
-            response = requests.get(
-                "https://store.steampowered.com/api/appdetails",
-                params={
-                    'appids': appid,
-                    'cc': 'US',
-                    'l': 'english',
-                },
-                timeout=30
-            )
-
-            response.raise_for_status()  # Raise an exception for HTTP errors
-            data = response.json()
-
+                print("downloading data for appid:",appid)
+                data=get_json(
+                    APPDETAILS_URL,
+                    {'appids':appid, 'cc':'US', 'l':'english'},
+                )
             
-            if not data:
-                raise SystemExit("Empty response (probably rate limited)")
+                temp_file = details_dir / f"{appid}.json.tmp"
+                with open(temp_file, 'w', encoding='utf-8') as jf:
+                    json.dump(data, jf, indent=2, ensure_ascii=False)
+                temp_file.replace(output_file)
+                time.sleep(1.5)  # Sleep for 1,5 second to avoid hitting the rate limit
+                print(f"Saved to {output_file}")
+
+            #Display the results
+            game=data.get(str(appid), {})
+
+            status = eligibility(game)
+            print(position, appid, status)
+
+            result = {"position": position, "appid": appid, "status": status}
             
-
-            temp_file = details_dir / f"{appid}.json.tmp"
-            with open(temp_file, 'w', encoding='utf-8') as jf:
-                json.dump(data, jf, indent=2, ensure_ascii=False)
-            temp_file.replace(output_file)
-            time.sleep(1.5)  # Sleep for 1,5 second to avoid hitting the rate limit
-            print(f"Saved to {output_file}")
-
-        
-
-        #Display the results
-        game=data.get(str(appid), {})
-
-        status = eligibility(game)
-        print(position, appid, status)
-
-        result = {"position": position, "appid": appid, "status": status}
-        
-        if status == "eligible":
-            release = parse_date(game["data"]["release_date"]["date"])
-            counts = collect_reviews(appid, release)
-            result["release_date"] = release.date().isoformat()
-            result.update(counts)
-            print("  reviews:", counts)
-
+            if status == "eligible":
+                release = parse_date(game["data"]["release_date"]["date"])
+                counts = collect_reviews(appid, release)
+                result["release_date"] = release.date().isoformat()
+                result.update(counts)
+                print("  reviews:", counts)
+        except RuntimeError as e:
+            print(f"{position} {appid} FAILED: {e}")
+            failed +=1
+            continue
 
         writer.writerow(result)
         out.flush()    #make sure the row is saved to disk now
         processed += 1
 
-print (f"Done: {processed} new, {skipped} already in results.csv")
+print (f"Done: {processed} new, {skipped} already in results.csv, {failed} failed")
 
