@@ -122,14 +122,36 @@ project_root = Path(__file__).resolve().parent.parent
 sample_file = project_root / 'data' / 'sample_order.csv'
 details_dir = project_root / 'data' / 'raw' / 'details'
 details_dir.mkdir(parents=True, exist_ok=True)
+
+#Write results to csv
+results_file = project_root / "data" / "results.csv" 
+FIELDS = ["position", "appid", "status", "release_date",
+          "before_release", "first_year", "lifetime"]
+          
+# appids already written in a previous run
+done = set()
+if results_file.exists():
+  with open (results_file, newline='' , encoding= 'utf8') as rf:
+      done = {r["appid"] for r in csv.DictReader(rf)}
+is_new = not results_file.exists()
 #read the first App id from our randomized list
-with open(sample_file, 'r', newline='', encoding='utf-8') as f:
+with open(sample_file, 'r', newline='', encoding='utf-8') as f, \
+     open(results_file, 'a', newline='', encoding='utf-8') as out:
     reader = csv.DictReader(f)
+    writer = csv.DictWriter(out, fieldnames=FIELDS)
+    if is_new:
+        writer.writeheader()
+    skipped=0
+    processed=0
     for position, row in enumerate(reader, start=1):
         if position >5:
             break
 
         appid = row['appid']
+
+        if appid in done:
+            skipped += 1
+            continue
 #prepare the file path for the game details
         output_file = details_dir / f"{appid}.json"
 
@@ -175,7 +197,19 @@ with open(sample_file, 'r', newline='', encoding='utf-8') as f:
         status = eligibility(game)
         print(position, appid, status)
 
+        result = {"position": position, "appid": appid, "status": status}
+        
         if status == "eligible":
             release = parse_date(game["data"]["release_date"]["date"])
             counts = collect_reviews(appid, release)
-            print("    reviews:", counts)
+            result["release_date"] = release.date().isoformat()
+            result.update(counts)
+            print("  reviews:", counts)
+
+
+        writer.writerow(result)
+        out.flush()    #make sure the row is saved to disk now
+        processed += 1
+
+print (f"Done: {processed} new, {skipped} already in results.csv")
+
