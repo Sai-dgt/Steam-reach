@@ -4,9 +4,10 @@ from pathlib import Path
 import requests
 from datetime import datetime,timezone,timedelta
 import time
+from collections import Counter
 
 Window_start = datetime(2020, 1, 1, tzinfo=timezone.utc)
-Window_end = datetime(2025, 12, 31, tzinfo=timezone.utc)
+Window_end = datetime(2025, 10, 31, tzinfo=timezone.utc)
 APPDETAILS_URL="https://store.steampowered.com/api/appdetails"
 date_format = [
 
@@ -168,7 +169,7 @@ with open(sample_file, 'r', newline='', encoding='utf-8') as f, \
     failed=0
 
     for position, row in enumerate(reader, start=1):
-        if position >5:
+        if position >50:
             break
 
         appid = row['appid']
@@ -206,7 +207,7 @@ with open(sample_file, 'r', newline='', encoding='utf-8') as f, \
             game=data.get(str(appid), {})
 
             status = eligibility(game)
-            print(position, appid, status)
+            
 
             result = {"position": position, "appid": appid, "status": status}
             
@@ -215,15 +216,23 @@ with open(sample_file, 'r', newline='', encoding='utf-8') as f, \
                 counts = collect_reviews(appid, release)
                 result["release_date"] = release.date().isoformat()
                 result.update(counts)
+                if counts["before_release"]:
+                    result["status"] = "7_prior_early_access"
                 print("  reviews:", counts)
         except RuntimeError as e:
             print(f"{position} {appid} FAILED: {e}")
             failed +=1
             continue
-
+        print(position, appid, status)
         writer.writerow(result)
         out.flush()    #make sure the row is saved to disk now
         processed += 1
 
 print (f"Done: {processed} new, {skipped} already in results.csv, {failed} failed")
+with open(results_file, newline='', encoding='utf-8') as rf:
+  statuses = Counter(r["status"] for r in csv.DictReader(rf))
 
+print("Status counts in results.csv:")
+for status, n in sorted(statuses.items()):
+    print(f"{status}: {n}")
+print(f"Eligible games so far: {statuses['eligible']}")
