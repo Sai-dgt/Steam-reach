@@ -6,6 +6,7 @@ from datetime import datetime,timezone,timedelta
 import time
 from collections import Counter
 
+TARGET_ELIGIBLE = 500
 Window_start = datetime(2020, 1, 1, tzinfo=timezone.utc)
 Window_end = datetime(2025, 10, 31, tzinfo=timezone.utc)
 APPDETAILS_URL="https://store.steampowered.com/api/appdetails"
@@ -83,7 +84,18 @@ def get_json(url, params, max_attempts=5):
             wait *=2         #30s,60s,120s,240s
 
     raise RuntimeError(f"Gave up after {max_attempts} attempts")
+    
+def extract_review_count(data):
+     if not isinstance(data,dict):
+        return None
+     response=data.get("response")
+     if not isinstance(response,dict):
+         return None
+     count = response.get("total_matching")
 
+     if isinstance(count,int) and not isinstance (count,bool) and count>=0:
+              return count
+     return None   
 
 def get_review_count(appid,start,end, variant):
     url = "https://api.steampowered.com/IUserReviewsService/GetAppReviews/v1/"
@@ -112,23 +124,47 @@ def get_review_count(appid,start,end, variant):
 
     output_file = reviews_dir / f"{appid}_{variant}.json"
 
+          
+    
     #New reuse the variant if it already exists
+    #check the previously saved file
     if output_file.exists():
-        print("using saved review response", output_file)
-
+        
         with open(output_file, "r", encoding="utf-8") as f:
             data=json.load(f)
+        count=extract_review_count(data)
+        if count is not None:
+            print("using saved review response", output_file)
+            
+            return count
 
-    else:
-        data=get_json(url,params)
-        temp_file = reviews_dir / f"{appid}_{variant}.json.tmp"
-        with open (temp_file,"w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-        temp_file.replace(output_file)
-        time.sleep(1.5)
-    
-    
-    return data.get("response", {}).get("total_matching")
+        print ("invalid saved count.Fetching again:", output_file)
+    #Download a new response
+    data=get_json(url,params)
+    time.sleep(1.5)
+
+    #Validate the new response
+    count = extract_review_count(data)
+    if count is None :
+        
+        if not isinstance(data,dict):
+           keys=type(data).__name__
+        elif not isinstance(data.get("response"),dict):
+            keys=type(data.get("response")).__name__
+        else:
+
+            keys= list(data.get("response").keys()) 
+        raise RuntimeError(
+                f"Missing review count for {appid}, variant {variant}. Response: {keys}"
+            )
+
+    #Save the valid answer
+    temp_file = reviews_dir / f"{appid}_{variant}.json.tmp"
+    with open (temp_file,"w", encoding="utf-8") as f:
+               json.dump(data, f, indent=2, ensure_ascii=False)
+    temp_file.replace(output_file)
+    return count
+ 
 
 def collect_reviews(appid, release):
     first_year_end  = int((release + timedelta(days=365)).timestamp())
@@ -153,9 +189,13 @@ FIELDS = ["position", "appid", "status", "release_date",
           
 # appids already written in a previous run
 done = set()
+eligible_count = 0
 if results_file.exists():
   with open (results_file, newline='' , encoding= 'utf8') as rf:
-      done = {r["appid"] for r in csv.DictReader(rf)}
+      for r in csv.DictReader(rf):
+         done.add(r["appid"])
+         if r["status"] == "eligible":
+             eligible_count += 1
 is_new = not results_file.exists()
 #read the first App id from our randomized list
 with open(sample_file, 'r', newline='', encoding='utf-8') as f, \
@@ -169,7 +209,7 @@ with open(sample_file, 'r', newline='', encoding='utf-8') as f, \
     failed=0
 
     for position, row in enumerate(reader, start=1):
-        if position >50:
+        if eligible_count >=TARGET_ELIGIBLE:
             break
 
         appid = row['appid']
@@ -216,17 +256,21 @@ with open(sample_file, 'r', newline='', encoding='utf-8') as f, \
                 counts = collect_reviews(appid, release)
                 result["release_date"] = release.date().isoformat()
                 result.update(counts)
-                if counts["before_release"]:
+                if counts["before_release"]>0:
                     result["status"] = "7_prior_early_access"
                 print("  reviews:", counts)
         except RuntimeError as e:
             print(f"{position} {appid} FAILED: {e}")
             failed +=1
             continue
-        print(position, appid, status)
+        print(position, appid, result["status"])
         writer.writerow(result)
         out.flush()    #make sure the row is saved to disk now
         processed += 1
+
+        if result["status"] == "eligible":
+            eligible_count += 1
+            print(f"    eligible: {eligible_count}/{TARGET_ELIGIBLE}")
 
 print (f"Done: {processed} new, {skipped} already in results.csv, {failed} failed")
 with open(results_file, newline='', encoding='utf-8') as rf:
