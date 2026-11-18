@@ -7,6 +7,7 @@ import time
 from collections import Counter
 
 TARGET_ELIGIBLE = 500
+MAX_CONSECUTIVE_FAILURES = 5
 Window_start = datetime(2020, 1, 1, tzinfo=timezone.utc)
 Window_end = datetime(2025, 10, 31, tzinfo=timezone.utc)
 APPDETAILS_URL="https://store.steampowered.com/api/appdetails"
@@ -207,11 +208,12 @@ with open(sample_file, 'r', newline='', encoding='utf-8') as f, \
     skipped=0
     processed=0
     failed=0
+    failed_attempt=0
 
     for position, row in enumerate(reader, start=1):
         if eligible_count >=TARGET_ELIGIBLE:
             break
-
+        
         appid = row['appid']
 
         if appid in done:
@@ -233,7 +235,7 @@ with open(sample_file, 'r', newline='', encoding='utf-8') as f, \
                 print("downloading data for appid:",appid)
                 data=get_json(
                     APPDETAILS_URL,
-                    {'appids':appid, 'cc':'US', 'l':'english'},
+                    {'appids':appid, 'cc':'US', 'l':'english'}
                 )
             
                 temp_file = details_dir / f"{appid}.json.tmp"
@@ -262,7 +264,16 @@ with open(sample_file, 'r', newline='', encoding='utf-8') as f, \
         except RuntimeError as e:
             print(f"{position} {appid} FAILED: {e}")
             failed +=1
+            
+            
+            failed_attempt +=1
+            print(f"failed attempts:{failed_attempt}")
+            if failed_attempt>=MAX_CONSECUTIVE_FAILURES:
+                print (f"Stopping:{MAX_CONSECUTIVE_FAILURES} consecutive failures in a row. position:{position}, appid{appid}. Rerun to resume")
+                break 
             continue
+        failed_attempt=0
+        
         print(position, appid, result["status"])
         writer.writerow(result)
         out.flush()    #make sure the row is saved to disk now
