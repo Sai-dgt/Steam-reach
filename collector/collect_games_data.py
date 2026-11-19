@@ -12,6 +12,8 @@ TARGET_ELIGIBLE = 500
 parser = argparse.ArgumentParser(description="collects steam game details and first year review counts in sample order before check eligibility ")
 parser.add_argument("--target", type=int, default=TARGET_ELIGIBLE,help="number of eligible games to reach before stopping")
 args= parser.parse_args()
+DETAILS_PAUSE = 1.5
+REVIEW_PAUSE = 1.5
 MAX_CONSECUTIVE_FAILURES = 5
 Window_start = datetime(2020, 1, 1, tzinfo=timezone.utc)
 Window_end = datetime(2025, 10, 31, tzinfo=timezone.utc)
@@ -160,7 +162,7 @@ def get_review_count(appid,start,end, variant):
         print ("invalid saved count.Fetching again:", output_file)
     #Download a new response
     data=get_json(url,params, appid=appid, call=variant)
-    time.sleep(1.5)
+    time.sleep(REVIEW_PAUSE)
 
     #Validate the new response
     count = extract_review_count(data)
@@ -287,7 +289,7 @@ with open(sample_file, 'r', newline='', encoding='utf-8') as f, \
                 with open(temp_file, 'w', encoding='utf-8') as jf:
                     json.dump(data, jf, indent=2, ensure_ascii=False)
                 temp_file.replace(output_file)
-                time.sleep(1.5)  # Sleep for 1,5 second to avoid hitting the rate limit
+                time.sleep(DETAILS_PAUSE)  # Sleep to avoid hitting the rate limit
                 print(f"Saved to {output_file}")
 
             #Display the results
