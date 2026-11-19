@@ -61,25 +61,34 @@ def eligibility(game):
         return "6_no_price"  # Exclude if the game has no price information 
     return "eligible"
 
-def get_json(url, params, max_attempts=5):
+def get_json(url, params, max_attempts=5,call=None,appid=None):
     """Get a steam URL and return its JSON, retrying on rate limits and network errors"""
 
     wait = 30
 
     for attempt in range(1, max_attempts + 1):
-        try:
+      status = None  
+      error=""  
+        
+      try:
+            start=time.monotonic()
             response = requests.get(url, params=params, timeout=30)
+            status=response.status_code
+            
             if response.status_code == 429 or response.status_code >= 500:
                 raise requests.HTTPError (f"HTTP {response.status_code}")
             response.raise_for_status()
             data = response.json()
             if data:
                 return data
+            error = "empty response"
             print(f"   empty response (attempt {attempt})")
-        except (requests.RequestException, ValueError) as e:
+      except (requests.RequestException, ValueError) as e:
+            error= type(e).__name__
             print(f" request failed (attempt {attempt}): {e}")
-
-        if attempt < max_attempts:
+      finally:
+            log_call(appid, call, attempt, status, time.monotonic() - start, error)
+      if attempt < max_attempts:
             print(f"   waiting {wait}s before retrying...")
             time.sleep(wait)
             wait *=2         #30s,60s,120s,240s
@@ -141,7 +150,7 @@ def get_review_count(appid,start,end, variant):
 
         print ("invalid saved count.Fetching again:", output_file)
     #Download a new response
-    data=get_json(url,params)
+    data=get_json(url,params, appid=appid, call=variant)
     time.sleep(1.5)
 
     #Validate the new response
@@ -181,7 +190,29 @@ def collect_reviews(appid, release):
 project_root = Path(__file__).resolve().parent.parent
 sample_file = project_root / 'data' / 'sample_order.csv'
 details_dir = project_root / 'data' / 'raw' / 'details'
+LOG_FILE = project_root / "data" / "collection_log.csv"
 details_dir.mkdir(parents=True, exist_ok=True)
+
+def log_call(appid, call, attempt, status, duration, error):
+  
+      LOG_FIELDS = ["time_utc","appid", "call", "attempt","status", "duration" , "error"] 
+      is_new = not LOG_FILE.exists()
+      with open (LOG_FILE,"a", newline="", encoding= 'utf8') as f:
+              writer=csv.writer(f)
+              if is_new:
+                        writer.writerow(LOG_FIELDS)
+              writer.writerow([
+                    datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                    appid,
+                    call,
+                    attempt,
+                    status,
+                    round(duration, 2),
+                    error
+                ])
+                  
+
+
 
 #Write results to csv
 results_file = project_root / "data" / "results.csv" 
@@ -235,7 +266,12 @@ with open(sample_file, 'r', newline='', encoding='utf-8') as f, \
                 print("downloading data for appid:",appid)
                 data=get_json(
                     APPDETAILS_URL,
-                    {'appids':appid, 'cc':'US', 'l':'english'}
+                    {'appids':appid,
+                      'cc':'US', 
+                      'l':'english'
+                      },
+                      appid=appid ,
+                      call="details"
                 )
             
                 temp_file = details_dir / f"{appid}.json.tmp"
