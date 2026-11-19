@@ -5,8 +5,12 @@ import requests
 from datetime import datetime,timezone,timedelta
 import time
 from collections import Counter
+import argparse
 
 TARGET_ELIGIBLE = 500
+parser = argparse.ArgumentParser(description="collects steam game details and first year review counts in sample order before check eligibility ")
+parser.add_argument("--target", type=int, default=TARGET_ELIGIBLE,help="number of eligible games to reach before stopping")
+args= parser.parse_args()
 MAX_CONSECUTIVE_FAILURES = 5
 Window_start = datetime(2020, 1, 1, tzinfo=timezone.utc)
 Window_end = datetime(2025, 10, 31, tzinfo=timezone.utc)
@@ -242,7 +246,7 @@ with open(sample_file, 'r', newline='', encoding='utf-8') as f, \
     failed_attempt=0
 
     for position, row in enumerate(reader, start=1):
-        if eligible_count >=TARGET_ELIGIBLE:
+        if eligible_count >=args.target:
             break
         
         appid = row['appid']
@@ -317,7 +321,7 @@ with open(sample_file, 'r', newline='', encoding='utf-8') as f, \
 
         if result["status"] == "eligible":
             eligible_count += 1
-            print(f"    eligible: {eligible_count}/{TARGET_ELIGIBLE}")
+            print(f"    eligible: {eligible_count}/{args.target}")
 
 print (f"Done: {processed} new, {skipped} already in results.csv, {failed} failed")
 with open(results_file, newline='', encoding='utf-8') as rf:
