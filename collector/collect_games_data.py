@@ -7,6 +7,7 @@ import time
 from collections import Counter
 import argparse
 
+
 TARGET_ELIGIBLE = 500
 parser = argparse.ArgumentParser(description="collects steam game details and first year review counts in sample order before check eligibility ")
 parser.add_argument("--target", type=int, default=TARGET_ELIGIBLE,help="number of eligible games to reach before stopping")
@@ -15,6 +16,10 @@ MAX_CONSECUTIVE_FAILURES = 5
 Window_start = datetime(2020, 1, 1, tzinfo=timezone.utc)
 Window_end = datetime(2025, 10, 31, tzinfo=timezone.utc)
 APPDETAILS_URL="https://store.steampowered.com/api/appdetails"
+user_id={
+"user-agent":"steam-reach/1.0(+https://github.com/Sai-dgt/Steam-reach)"
+
+}
 date_format = [
 
  "%b %d, %Y",
@@ -76,7 +81,7 @@ def get_json(url, params, max_attempts=5,call=None,appid=None):
         
       try:
             start=time.monotonic()
-            response = requests.get(url, params=params, timeout=30)
+            response = requests.get(url, params=params, timeout=30, headers=user_id)
             status=response.status_code
             
             if response.status_code == 429 or response.status_code >= 500:
