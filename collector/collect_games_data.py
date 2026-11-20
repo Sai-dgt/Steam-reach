@@ -118,13 +118,13 @@ def extract_review_count(data):
               return count
      return None   
 
-def get_review_count(appid,start,end, variant):
+def get_review_count(appid,start,end, variant,purchase_type):
     url = "https://api.steampowered.com/IUserReviewsService/GetAppReviews/v1/"
     query = {
         'appid': appid,
         'filter': 1,
         'review_type': 0,
-        'purchase_type': 0,
+        'purchase_type': purchase_type,
         'languages': ['all'],
         'filter_offtopic_activity': False,
         'num_per_page': 1  # We only need the count, so request 1 review
@@ -188,13 +188,14 @@ def get_review_count(appid,start,end, variant):
  
 
 def collect_reviews(appid, release):
+    
     first_year_end  = int((release + timedelta(days=365)).timestamp())
     before_year_end = int((release - timedelta(days=2)).timestamp())
 
     return{
-        "before_release":get_review_count (appid, 1, before_year_end, "before_release"),
-        "first_year":get_review_count (appid,int(release.timestamp()),first_year_end,"first_year"),
-        "lifetime":get_review_count ( appid, None,None, "lifetime"),
+        "before_release":get_review_count (appid, 1, before_year_end, "before_release",0),
+        "first_year":get_review_count (appid,int(release.timestamp()),first_year_end,"first_year_all",1),
+        "lifetime":get_review_count ( appid, None,None, "lifetime_all",1),
     }
      
 
